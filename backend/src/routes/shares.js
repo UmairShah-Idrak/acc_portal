@@ -27,7 +27,10 @@ router.get('/', auth, async (req, res) => {
 // GET /api/shares/file/:fileId — get shares for a specific file
 router.get('/file/:fileId', auth, async (req, res) => {
   try {
-    const shares = await Share.find({ fileItem: req.params.fileId, createdBy: req.user._id }).sort({ createdAt: -1 });
+    // Admin sees all shares for the file; regular user sees only their own
+    const filter = { fileItem: req.params.fileId };
+    if (req.user.role !== 'admin') filter.createdBy = req.user._id;
+    const shares = await Share.find(filter).sort({ createdAt: -1 });
     res.json(shares);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -41,7 +44,9 @@ router.post('/', auth, async (req, res) => {
     if (!fileId || !password) return res.status(400).json({ message: 'fileId and password required' });
     if (password.length < 4) return res.status(400).json({ message: 'Share password must be at least 4 characters' });
 
-    const fileItem = await FileItem.findOne({ _id: fileId, owner: req.user._id, type: 'file', isTrashed: false });
+    // Admin can share any file; regular users can only share files they own
+    const ownerFilter = req.user.role === 'admin' ? {} : { owner: req.user._id };
+    const fileItem = await FileItem.findOne({ _id: fileId, ...ownerFilter, type: 'file', isTrashed: false });
     if (!fileItem) return res.status(404).json({ message: 'File not found' });
 
     const passwordHash = await bcrypt.hash(password, 10);
