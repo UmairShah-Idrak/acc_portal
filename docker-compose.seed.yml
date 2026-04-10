@@ -1,0 +1,22 @@
+version: '3.9'
+
+# Run once to seed the admin user:
+# docker compose -f docker-compose.yml -f docker-compose.seed.yml run --rm seed
+
+services:
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: accounts_portal_seed
+    environment:
+      MONGODB_URI: mongodb://admin:BlbkFJW8ok91e4DkRY4BGrcZIN@188.245.219.121:27066/accounts_portal?authSource=admin
+      JWT_SECRET: accounts_portal_secret_key_2024_change_in_prod
+      UPLOAD_DIR: /app/uploads
+    command: ["node", "src/seed.js"]
+    networks:
+      - portal_net
+
+networks:
+  portal_net:
+    driver: bridge

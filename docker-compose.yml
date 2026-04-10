@@ -1,0 +1,46 @@
+version: '3.9'
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: accounts_portal_backend
+    restart: unless-stopped
+    environment:
+      PORT: 5000
+      MONGODB_URI: mongodb://admin:BlbkFJW8ok91e4DkRY4BGrcZIN@188.245.219.121:27066/accounts_portal?authSource=admin
+      JWT_SECRET: accounts_portal_secret_key_2024_change_in_prod
+      UPLOAD_DIR: /app/uploads
+      CLIENT_URL: http://localhost
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - portal_net
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:5000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: accounts_portal_frontend
+    restart: unless-stopped
+    ports:
+      - "8888:80"
+    depends_on:
+      - backend
+    networks:
+      - portal_net
+
+volumes:
+  uploads_data:
+    driver: local
+
+networks:
+  portal_net:
+    driver: bridge
