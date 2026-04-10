@@ -1,5 +1,3 @@
-version: '3.9'
-
 # Run once to seed the admin user:
 # docker compose -f docker-compose.yml -f docker-compose.seed.yml run --rm seed
 
