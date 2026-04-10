@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  LayoutGrid, List, Upload, FolderPlus, ChevronRight, Home,
-  Star, Clock, Trash2, RefreshCw, HardDrive
+  LayoutGrid, List, Upload, FolderPlus, ChevronRight,
+  Star, Clock, Trash2, RefreshCw, HardDrive, Share2
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
@@ -28,11 +29,14 @@ const VIEW_LABELS = {
   starred: { label: 'Starred', icon: Star },
   recent: { label: 'Recent', icon: Clock },
   trash: { label: 'Trash', icon: Trash2 },
+  shared: { label: 'Shared with me', icon: Share2 },
 };
 
 export default function Drive({ view: viewProp }) {
   const { folderId } = useParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
   const [searchParams] = useSearchParams();
   const searchQuery = searchParams.get('search');
 
@@ -280,9 +284,9 @@ export default function Drive({ view: viewProp }) {
         ) : items.length === 0 ? (
           <EmptyState view={view} searchQuery={searchQuery} canUpload={canUpload} onUpload={() => fileInputRef.current?.click()} />
         ) : viewMode === 'grid' ? (
-          <GridView items={items} onContextMenu={handleContextMenu} onClick={handleItemClick} onAction={handleAction} />
+          <GridView items={items} onContextMenu={handleContextMenu} onClick={handleItemClick} onAction={handleAction} isAdmin={isAdmin} />
         ) : (
-          <ListView items={items} onContextMenu={handleContextMenu} onClick={handleItemClick} onAction={handleAction} downloadFile={downloadFile} />
+          <ListView items={items} onContextMenu={handleContextMenu} onClick={handleItemClick} onAction={handleAction} downloadFile={downloadFile} isAdmin={isAdmin} />
         )}
       </div>
 
@@ -334,7 +338,7 @@ export default function Drive({ view: viewProp }) {
   );
 }
 
-function GridView({ items, onContextMenu, onClick, onAction }) {
+function GridView({ items, onContextMenu, onClick, onAction, isAdmin }) {
   const folders = items.filter(i => i.type === 'folder');
   const files = items.filter(i => i.type === 'file');
 
@@ -345,7 +349,7 @@ function GridView({ items, onContextMenu, onClick, onAction }) {
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Folders</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {folders.map(item => (
-              <GridCard key={item._id} item={item} onContextMenu={onContextMenu} onClick={onClick} onAction={onAction} />
+              <GridCard key={item._id} item={item} onContextMenu={onContextMenu} onClick={onClick} onAction={onAction} isAdmin={isAdmin} />
             ))}
           </div>
         </section>
@@ -355,7 +359,7 @@ function GridView({ items, onContextMenu, onClick, onAction }) {
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Files</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {files.map(item => (
-              <GridCard key={item._id} item={item} onContextMenu={onContextMenu} onClick={onClick} onAction={onAction} />
+              <GridCard key={item._id} item={item} onContextMenu={onContextMenu} onClick={onClick} onAction={onAction} isAdmin={isAdmin} />
             ))}
           </div>
         </section>
@@ -364,7 +368,7 @@ function GridView({ items, onContextMenu, onClick, onAction }) {
   );
 }
 
-function GridCard({ item, onContextMenu, onClick, onAction }) {
+function GridCard({ item, onContextMenu, onClick, onAction, isAdmin }) {
   const isImage = item.mimeType?.startsWith('image/');
 
   return (
@@ -390,9 +394,14 @@ function GridCard({ item, onContextMenu, onClick, onAction }) {
       {/* Info */}
       <div className="p-3">
         <p className="text-xs font-medium text-gray-800 truncate leading-5">{item.name}</p>
-        {item.type === 'file' && (
-          <p className="text-xs text-gray-400 mt-0.5">{formatBytes(item.size)}</p>
-        )}
+        <div className="flex items-center justify-between mt-0.5">
+          {item.type === 'file' && <p className="text-xs text-gray-400">{formatBytes(item.size)}</p>}
+          {isAdmin && item.owner && (
+            <span className="text-xs text-blue-500 font-medium truncate ml-1" title={item.owner.email}>
+              {item.owner.name}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Star indicator */}
@@ -402,19 +411,19 @@ function GridCard({ item, onContextMenu, onClick, onAction }) {
         </div>
       )}
 
-      {/* Hover overlay with quick actions */}
       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors" />
     </div>
   );
 }
 
-function ListView({ items, onContextMenu, onClick, onAction, downloadFile }) {
+function ListView({ items, onContextMenu, onClick, onAction, downloadFile, isAdmin }) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <table className="w-full text-sm">
         <thead>
           <tr className="bg-gray-50 border-b border-gray-200">
             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider w-full">Name</th>
+            {isAdmin && <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell w-32">Owner</th>}
             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell w-32">Size</th>
             <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell w-40">Modified</th>
             <th className="w-20 px-4 py-3"></th>
@@ -422,7 +431,7 @@ function ListView({ items, onContextMenu, onClick, onAction, downloadFile }) {
         </thead>
         <tbody className="divide-y divide-gray-100">
           {items.map(item => (
-            <ListRow key={item._id} item={item} onContextMenu={onContextMenu} onClick={onClick} onAction={onAction} downloadFile={downloadFile} />
+            <ListRow key={item._id} item={item} onContextMenu={onContextMenu} onClick={onClick} onAction={onAction} downloadFile={downloadFile} isAdmin={isAdmin} />
           ))}
         </tbody>
       </table>
@@ -430,7 +439,7 @@ function ListView({ items, onContextMenu, onClick, onAction, downloadFile }) {
   );
 }
 
-function ListRow({ item, onContextMenu, onClick, onAction, downloadFile }) {
+function ListRow({ item, onContextMenu, onClick, onAction, downloadFile, isAdmin }) {
   return (
     <tr
       onContextMenu={e => onContextMenu(e, item)}
@@ -444,6 +453,18 @@ function ListRow({ item, onContextMenu, onClick, onAction, downloadFile }) {
           {item.isStarred && <Star className="w-3 h-3 text-yellow-400 fill-yellow-400 flex-shrink-0" />}
         </div>
       </td>
+      {isAdmin && (
+        <td className="px-4 py-3 hidden md:table-cell whitespace-nowrap">
+          {item.owner && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full font-medium">
+              <div className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[9px] font-bold">
+                {item.owner.name?.[0]?.toUpperCase()}
+              </div>
+              {item.owner.name}
+            </span>
+          )}
+        </td>
+      )}
       <td className="px-4 py-3 text-xs text-gray-400 hidden md:table-cell whitespace-nowrap">
         {item.type === 'file' ? formatBytes(item.size) : '—'}
       </td>
@@ -508,6 +529,16 @@ function EmptyState({ view, searchQuery, canUpload, onUpload }) {
       </div>
       <p className="text-gray-600 font-medium">No starred items</p>
       <p className="text-gray-400 text-sm mt-1">Right-click any file to star it</p>
+    </div>
+  );
+
+  if (view === 'shared') return (
+    <div className="flex flex-col items-center justify-center h-64 text-center">
+      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+        <Share2 className="w-8 h-8 text-gray-400" />
+      </div>
+      <p className="text-gray-600 font-medium">No files shared with you</p>
+      <p className="text-gray-400 text-sm mt-1">Files shared with you by others will appear here</p>
     </div>
   );
 

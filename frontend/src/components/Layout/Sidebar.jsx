@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { HardDrive, Star, Clock, Trash2, Users, ChevronRight, FolderOpen } from 'lucide-react';
+import { HardDrive, Star, Clock, Trash2, Users, FolderOpen, Share2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 function formatBytes(bytes) {
@@ -12,12 +12,13 @@ function formatBytes(bytes) {
 
 export default function Sidebar() {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const isAdmin = user?.role === 'admin';
 
   const navItems = [
-    { to: '/', label: 'My Drive', icon: HardDrive, end: true },
+    { to: '/', label: isAdmin ? 'All Files' : 'My Drive', icon: HardDrive, end: true },
     { to: '/recent', label: 'Recent', icon: Clock },
     { to: '/starred', label: 'Starred', icon: Star },
+    ...(!isAdmin ? [{ to: '/shared', label: 'Shared with me', icon: Share2 }] : []),
     { to: '/trash', label: 'Trash', icon: Trash2 },
   ];
 
@@ -33,19 +34,8 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* New button */}
-      <div className="px-4 py-4">
-        <button
-          onClick={() => navigate('/')}
-          className="flex items-center gap-2 px-5 py-2.5 bg-white border border-gray-300 rounded-2xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:shadow-md transition-all w-full"
-        >
-          <span className="text-xl leading-none font-light text-gray-500">+</span>
-          New
-        </button>
-      </div>
-
       {/* Nav */}
-      <nav className="flex-1 px-3 space-y-0.5">
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
         {navItems.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -62,7 +52,7 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
-        {user?.role === 'admin' && (
+        {isAdmin && (
           <>
             <div className="pt-3 pb-1 px-3">
               <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Admin</span>

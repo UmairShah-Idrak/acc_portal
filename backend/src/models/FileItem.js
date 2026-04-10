@@ -13,6 +13,8 @@ const fileItemSchema = new mongoose.Schema({
   isStarred: { type: Boolean, default: false },
   isTrashed: { type: Boolean, default: false },
   trashedAt: { type: Date, default: null },
+  // internal sharing: users who have been granted access
+  sharedWith: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 }, { timestamps: true });
 
 fileItemSchema.index({ owner: 1, parent: 1, isTrashed: 1 });

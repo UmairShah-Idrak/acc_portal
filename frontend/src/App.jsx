@@ -35,6 +35,7 @@ function App() {
             <Route path="starred" element={<Drive view="starred" />} />
             <Route path="recent" element={<Drive view="recent" />} />
             <Route path="trash" element={<Drive view="trash" />} />
+            <Route path="shared" element={<Drive view="shared" />} />
             <Route path="users" element={<AdminRoute><Users /></AdminRoute>} />
           </Route>
         </Routes>
