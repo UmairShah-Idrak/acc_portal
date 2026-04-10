@@ -50,7 +50,7 @@ export default function ContextMenu({ x, y, item, onClose, onAction }) {
         <>
           {item.type === 'file' && <MenuItem icon={Eye} label="Preview" onClick={() => onAction('preview')} />}
           {item.type === 'file' && <MenuItem icon={Download} label="Download" onClick={() => onAction('download')} />}
-          {item.type === 'file' && <MenuItem icon={Share2} label="Share" onClick={() => onAction('share')} />}
+          <MenuItem icon={Share2} label="Share" onClick={() => onAction('share')} />
           {item.type === 'file' && <MenuItem icon={Upload} label="Upload new version" onClick={() => onAction('newVersion')} />}
           <Divider />
           <MenuItem

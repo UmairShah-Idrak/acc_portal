@@ -12,6 +12,7 @@ function formatBytes(b) {
 }
 
 export default function ShareModal({ file, onClose }) {
+  const isFolder = file.type === 'folder';
   const [tab, setTab] = useState('users'); // 'users' | 'links'
   const [shares, setShares] = useState([]);
   const [sharedUsers, setSharedUsers] = useState([]);
@@ -155,13 +156,16 @@ export default function ShareModal({ file, onClose }) {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-gray-900 truncate max-w-[280px]">Share "{file.name}"</h2>
-              <p className="text-xs text-gray-400">{formatBytes(file.size)}</p>
+              <p className="text-xs text-gray-400">
+                {isFolder ? 'Folder' : formatBytes(file.size)}
+                {isFolder && ' · Shared users can access all files inside'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100"><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — Password Link only for files */}
         <div className="flex border-b border-gray-100 px-6 flex-shrink-0">
           <button
             onClick={() => setTab('users')}
@@ -170,23 +174,25 @@ export default function ShareModal({ file, onClose }) {
             }`}
           >
             <Users className="w-4 h-4" />
-            Share with User
+            {isFolder ? 'Share Folder' : 'Share with User'}
             {sharedUsers.length > 0 && (
               <span className="bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">{sharedUsers.length}</span>
             )}
           </button>
-          <button
-            onClick={() => setTab('links')}
-            className={`flex items-center gap-2 py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
-              tab === 'links' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Link className="w-4 h-4" />
-            Password Link
-            {shares.length > 0 && (
-              <span className="bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">{shares.length}</span>
-            )}
-          </button>
+          {!isFolder && (
+            <button
+              onClick={() => setTab('links')}
+              className={`flex items-center gap-2 py-3 px-1 text-sm font-medium border-b-2 transition-colors ${
+                tab === 'links' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Link className="w-4 h-4" />
+              Password Link
+              {shares.length > 0 && (
+                <span className="bg-blue-100 text-blue-700 text-xs px-1.5 py-0.5 rounded-full">{shares.length}</span>
+              )}
+            </button>
+          )}
         </div>
 
         <div className="overflow-y-auto flex-1 p-6">
@@ -195,7 +201,10 @@ export default function ShareModal({ file, onClose }) {
           {tab === 'users' && (
             <div className="space-y-4">
               <p className="text-xs text-gray-500">
-                Share directly with a registered portal user. They will see this file in their <strong>Shared with me</strong> section.
+                {isFolder
+                  ? <>Share this folder with a registered user. They will see it in <strong>Shared with me</strong> and can browse all files inside it.</>
+                  : <>Share directly with a registered portal user. They will see this file in their <strong>Shared with me</strong> section.</>
+                }
               </p>
 
               <form onSubmit={addUser} className="flex gap-2">
