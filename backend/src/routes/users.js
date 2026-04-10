@@ -3,7 +3,19 @@ const User = require('../models/User');
 const FileItem = require('../models/FileItem');
 const { auth, adminOnly } = require('../middleware/auth');
 
-// All routes require auth + admin
+// GET /api/users/list — lightweight user list for sharing UI (any authenticated user)
+router.get('/list', auth, async (req, res) => {
+  try {
+    const users = await User.find({ isActive: true })
+      .select('name email')
+      .sort({ name: 1 });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// All routes below require auth + admin
 router.use(auth, adminOnly);
 
 // GET /api/users

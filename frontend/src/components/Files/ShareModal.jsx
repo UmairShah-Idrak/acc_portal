@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Share2, X, Copy, Check, Trash2, Lock, Eye, EyeOff, Link, UserPlus, Users } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
@@ -15,18 +15,35 @@ export default function ShareModal({ file, onClose }) {
   const [tab, setTab] = useState('users'); // 'users' | 'links'
   const [shares, setShares] = useState([]);
   const [sharedUsers, setSharedUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]); // for autocomplete
   const [loadingShares, setLoadingShares] = useState(true);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [creating, setCreating] = useState(false);
   const [addingUser, setAddingUser] = useState(false);
   const [linkForm, setLinkForm] = useState({ password: '', expiresIn: '', label: '' });
   const [userEmail, setUserEmail] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const inputRef = useRef(null);
+  const suggestionsRef = useRef(null);
 
   useEffect(() => {
     fetchShares();
     fetchSharedUsers();
+    fetchAllUsers();
+  }, []);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handler = e => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target) &&
+          inputRef.current && !inputRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
   const fetchShares = async () => {
@@ -43,6 +60,26 @@ export default function ShareModal({ file, onClose }) {
       setSharedUsers(r.data);
     } catch { }
     finally { setLoadingUsers(false); }
+  };
+
+  const fetchAllUsers = async () => {
+    try {
+      const r = await api.get('/users/list');
+      setAllUsers(r.data);
+    } catch { }
+  };
+
+  // ── Autocomplete helpers ──────────────────────────────────────────────────
+  const alreadySharedIds = new Set(sharedUsers.map(u => u._id));
+  const suggestions = allUsers.filter(u =>
+    !alreadySharedIds.has(u._id) &&
+    (u.email.toLowerCase().includes(userEmail.toLowerCase()) ||
+     u.name.toLowerCase().includes(userEmail.toLowerCase()))
+  );
+
+  const selectSuggestion = user => {
+    setUserEmail(user.email);
+    setShowSuggestions(false);
   };
 
   // ── Internal user share ───────────────────────────────────────────────────
@@ -162,17 +199,54 @@ export default function ShareModal({ file, onClose }) {
               </p>
 
               <form onSubmit={addUser} className="flex gap-2">
-                <input
-                  type="email"
-                  value={userEmail}
-                  onChange={e => setUserEmail(e.target.value)}
-                  placeholder="User's email address"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="flex-1 relative">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={userEmail}
+                    onChange={e => { setUserEmail(e.target.value); setShowSuggestions(true); }}
+                    onFocus={() => setShowSuggestions(true)}
+                    placeholder="Search by name or email..."
+                    autoComplete="off"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  {/* Suggestions dropdown */}
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div
+                      ref={suggestionsRef}
+                      className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto"
+                    >
+                      {suggestions.map(u => (
+                        <button
+                          key={u._id}
+                          type="button"
+                          onMouseDown={() => selectSuggestion(u)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 transition-colors text-left"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {u.name[0].toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{u.name}</p>
+                            <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* No matches hint */}
+                  {showSuggestions && userEmail.length > 0 && suggestions.length === 0 && allUsers.length > 0 && (
+                    <div ref={suggestionsRef} className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl px-3 py-3 text-xs text-gray-400 text-center">
+                      No matching users found
+                    </div>
+                  )}
+                </div>
                 <button
                   type="submit"
                   disabled={!userEmail.trim() || addingUser}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap"
                 >
                   {addingUser ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <UserPlus className="w-4 h-4" />}
                   Add
