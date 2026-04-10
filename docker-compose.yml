@@ -1,5 +1,4 @@
 services:
-
   backend:
     build:
       context: ./backend
@@ -11,7 +10,7 @@ services:
       MONGODB_URI: mongodb://admin:BlbkFJW8ok91e4DkRY4BGrcZIN@188.245.219.121:27066/accounts_portal?authSource=admin
       JWT_SECRET: accounts_portal_secret_key_2024_change_in_prod
       UPLOAD_DIR: /app/uploads
-      CLIENT_URL: http://localhost
+      CLIENT_URL: https://voip-data.idrakai.com:8443
     volumes:
       - uploads_data:/app/uploads
     networks:
@@ -21,7 +20,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
   frontend:
     build:
       context: ./frontend
@@ -30,15 +28,16 @@ services:
     restart: unless-stopped
     ports:
       - "8888:80"
+      - "8443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
     networks:
       - portal_net
-
 volumes:
   uploads_data:
     driver: local
-
 networks:
   portal_net:
     driver: bridge
