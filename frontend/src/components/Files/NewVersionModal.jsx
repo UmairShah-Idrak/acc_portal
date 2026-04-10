@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, CloudUpload } from 'lucide-react';
+import { Upload, X } from 'lucide-react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
@@ -47,7 +47,7 @@ export default function NewVersionModal({ file, onClose, onUpdated }) {
           }`}
         >
           <input {...getInputProps()} />
-          <CloudUpload className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+          <Upload className="w-10 h-10 text-gray-300 mx-auto mb-2" />
           {newFile ? (
             <p className="text-sm font-medium text-blue-600">{newFile.name}</p>
           ) : (

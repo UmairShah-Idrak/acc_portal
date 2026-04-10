@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, CheckCircle, AlertCircle, CloudUpload } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../../api/axios';
 
 function formatBytes(b) {
@@ -70,7 +70,7 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
             }`}
           >
             <input {...getInputProps()} />
-            <CloudUpload className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <Upload className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-sm font-medium text-gray-700">
               {isDragActive ? 'Drop files here...' : 'Drag & drop files, or click to select'}
             </p>
