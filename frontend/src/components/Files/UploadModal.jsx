@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, X, CheckCircle, AlertCircle, Folder } from 'lucide-react';
+import { Upload, X, CheckCircle, AlertCircle, Folder, AlertTriangle } from 'lucide-react';
 import api from '../../api/axios';
 
 function formatBytes(b) {
@@ -21,18 +21,38 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
   const [stageProgress, setStageProgress] = useState({ current: 0, total: 0 });
   const [stageError, setStageError] = useState('');
 
-  // Detect folder mode: webkitRelativePath is set (non-empty) when using webkitdirectory input
+  // Conflict detection (file mode only)
+  const [existingFiles, setExistingFiles] = useState([]);
+  const [resolutions, setResolutions] = useState({}); // { filename: 'replace' | 'keep' | 'skip' }
+
+  // Detect folder mode from initial files
   const isFolderMode = files.length > 0 && !!files[0]?.file?.webkitRelativePath;
+
+  // Fetch existing files in current folder for conflict detection
+  useEffect(() => {
+    const folderMode = initialFiles.length > 0 && !!initialFiles[0]?.webkitRelativePath;
+    if (folderMode) return;
+    api.get(currentFolder ? `/files?parent=${currentFolder}` : '/files')
+      .then(r => setExistingFiles(r.data.filter(f => f.type === 'file')))
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getConflict = name => existingFiles.find(e => e.name === name) || null;
+  const getRes = name => resolutions[name] || 'keep';
+  const setRes = (name, action) => setResolutions(prev => ({ ...prev, [name]: action }));
+
+  const conflictingFiles = files.filter(f => !!getConflict(f.file.name));
+  const hasConflicts = conflictingFiles.length > 0;
+
+  // Folder stats
   const folderName = isFolderMode ? (files[0]?.file?.webkitRelativePath?.split('/')[0] || 'Folder') : '';
-  const totalSize = files.reduce((sum, f) => sum + (f.file.size || 0), 0);
+  const totalSize = files.reduce((s, f) => s + (f.file.size || 0), 0);
   const subfolderCount = isFolderMode
     ? new Set(
-        files
-          .map(({ file }) => {
-            const parts = file.webkitRelativePath.split('/');
-            return parts.length > 2 ? parts.slice(0, -1).join('/') : null;
-          })
-          .filter(Boolean)
+        files.map(({ file }) => {
+          const parts = file.webkitRelativePath.split('/');
+          return parts.length > 2 ? parts.slice(0, -1).join('/') : null;
+        }).filter(Boolean)
       ).size
     : 0;
 
@@ -48,43 +68,66 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
 
   const removeFile = idx => setFiles(prev => prev.filter((_, i) => i !== idx));
 
+  // Active files = non-skipped files
+  const activeFiles = files.filter(f => getRes(f.file.name) !== 'skip');
+
   // ── Regular file upload ────────────────────────────────────────────────────
   const handleFileUpload = async () => {
-    if (!files.length) return;
+    if (!activeFiles.length) return;
     setUploading(true);
     setStage('uploading');
-    const allFiles = [...files];
     const uploadedItems = [];
 
-    for (let i = 0; i < allFiles.length; i += BATCH) {
-      const slice = allFiles.slice(i, i + BATCH);
-      setStageProgress({ current: i, total: allFiles.length });
-      setFiles(prev => prev.map((f, idx) =>
-        idx >= i && idx < i + BATCH ? { ...f, status: 'uploading' } : f
+    // 1. Handle replacements individually
+    const toReplace = activeFiles.filter(f => getRes(f.file.name) === 'replace');
+    for (const f of toReplace) {
+      const existing = getConflict(f.file.name);
+      setFiles(prev => prev.map(p => p.file === f.file ? { ...p, status: 'uploading' } : p));
+      try {
+        const fd = new FormData();
+        fd.append('file', f.file);
+        const r = await api.post(`/files/${existing._id}/version`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        uploadedItems.push(r.data);
+        setFiles(prev => prev.map(p => p.file === f.file ? { ...p, status: 'done' } : p));
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Replace failed';
+        setFiles(prev => prev.map(p => p.file === f.file ? { ...p, status: 'error', error: msg } : p));
+      }
+    }
+
+    // 2. Handle keeps in batches
+    const toKeep = activeFiles.filter(f => getRes(f.file.name) !== 'replace');
+    for (let i = 0; i < toKeep.length; i += BATCH) {
+      const slice = toKeep.slice(i, i + BATCH);
+      setStageProgress({ current: i, total: toKeep.length });
+      setFiles(prev => prev.map(f =>
+        slice.some(s => s.file === f.file) ? { ...f, status: 'uploading' } : f
       ));
 
-      const formData = new FormData();
-      slice.forEach(f => formData.append('files', f.file));
-      if (currentFolder) formData.append('parent', currentFolder);
+      const fd = new FormData();
+      slice.forEach(f => fd.append('files', f.file));
+      if (currentFolder) fd.append('parent', currentFolder);
 
       try {
-        const r = await api.post('/files/upload', formData, {
+        const r = await api.post('/files/upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: e => {
             const pct = Math.round((e.loaded / e.total) * 100);
-            setFiles(prev => prev.map((f, idx) =>
-              idx >= i && idx < i + BATCH ? { ...f, progress: pct } : f
+            setFiles(prev => prev.map(f =>
+              slice.some(s => s.file === f.file) ? { ...f, progress: pct } : f
             ));
           },
         });
         uploadedItems.push(...r.data);
-        setFiles(prev => prev.map((f, idx) =>
-          idx >= i && idx < i + BATCH ? { ...f, status: 'done' } : f
+        setFiles(prev => prev.map(f =>
+          slice.some(s => s.file === f.file) ? { ...f, status: 'done' } : f
         ));
       } catch (err) {
         const msg = err.response?.data?.message || 'Upload failed';
-        setFiles(prev => prev.map((f, idx) =>
-          idx >= i && idx < i + BATCH ? { ...f, status: 'error', error: msg } : f
+        setFiles(prev => prev.map(f =>
+          slice.some(s => s.file === f.file) ? { ...f, status: 'error', error: msg } : f
         ));
         setUploading(false);
         return;
@@ -104,7 +147,7 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
     setStageError('');
 
     try {
-      // 1. Collect all unique folder paths (e.g. "MyFolder", "MyFolder/Sub")
+      // 1. Collect unique folder paths
       const folderPathsSet = new Set();
       files.forEach(({ file }) => {
         const parts = file.webkitRelativePath.split('/');
@@ -117,7 +160,7 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
         (a, b) => a.split('/').length - b.split('/').length
       );
 
-      // 2. Create folders shallowest-first
+      // 2. Create folder tree
       setStage('creating_folders');
       const pathToId = {};
 
@@ -133,7 +176,7 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
         pathToId[folderPath] = r.data._id;
       }
 
-      // 3. Group files by their parent folder path
+      // 3. Group files by parent folder
       const filesByParent = {};
       files.forEach(({ file }) => {
         const parts = file.webkitRelativePath.split('/');
@@ -142,7 +185,7 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
         filesByParent[parentPath].push(file);
       });
 
-      // 4. Upload files group by group, batch by batch
+      // 4. Upload files
       setStage('uploading');
       let uploaded = 0;
       const total = files.length;
@@ -154,11 +197,11 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
           const slice = groupFiles.slice(i, i + BATCH);
           setStageProgress({ current: uploaded, total });
 
-          const formData = new FormData();
-          slice.forEach(f => formData.append('files', f));
-          if (parentId) formData.append('parent', parentId);
+          const fd = new FormData();
+          slice.forEach(f => fd.append('files', f));
+          if (parentId) fd.append('parent', parentId);
 
-          await api.post('/files/upload', formData, {
+          await api.post('/files/upload', fd, {
             headers: { 'Content-Type': 'multipart/form-data' },
           });
           uploaded += slice.length;
@@ -166,7 +209,7 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
         }
       }
 
-      // 5. Add the top-level folder to the view
+      // 5. Return top-level folder to Drive view
       setStage('done');
       const topPath = sortedFolderPaths[0];
       if (topPath && pathToId[topPath]) {
@@ -183,6 +226,30 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
   };
 
   const handleUpload = isFolderMode ? handleFolderUpload : handleFileUpload;
+
+  // ── Conflict resolution button group ──────────────────────────────────────
+  function ResolutionButtons({ filename }) {
+    const cur = getRes(filename);
+    const btn = (action, label, color) => (
+      <button
+        onClick={() => setRes(filename, action)}
+        className={`px-2 py-0.5 text-[11px] font-medium border transition-colors ${
+          cur === action
+            ? `${color} text-white border-transparent`
+            : 'border-gray-300 text-gray-500 hover:bg-gray-50'
+        } first:rounded-l-md last:rounded-r-md`}
+      >
+        {label}
+      </button>
+    );
+    return (
+      <div className="flex flex-shrink-0">
+        {btn('replace', 'Replace', 'bg-orange-500')}
+        {btn('keep', 'Keep Both', 'bg-blue-500')}
+        {btn('skip', 'Skip', 'bg-gray-400')}
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -201,11 +268,10 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 space-y-4">
           {isFolderMode ? (
-            /* ── Folder mode ─────────────────────────────────────────────── */
-            <div className="space-y-4">
-              {/* Folder summary card */}
+            /* ── Folder mode ──────────────────────────────────────────────── */
+            <>
               <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
                 <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
                   <Folder className="w-6 h-6 text-blue-600" />
@@ -220,7 +286,6 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
                 </div>
               </div>
 
-              {/* Stage progress */}
               {stage && stage !== 'done' && (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-sm">
@@ -257,10 +322,11 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
                   {stageError}
                 </div>
               )}
-            </div>
+            </>
           ) : (
-            /* ── File mode ───────────────────────────────────────────────── */
+            /* ── File mode ────────────────────────────────────────────────── */
             <>
+              {/* Drop zone */}
               <div
                 {...getRootProps()}
                 className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
@@ -275,29 +341,64 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
                 <p className="text-xs text-gray-400 mt-1">Any file type · up to 5 GB each</p>
               </div>
 
+              {/* Conflict banner */}
+              {hasConflicts && !uploading && (
+                <div className="flex items-start gap-2.5 p-3 bg-amber-50 rounded-xl border border-amber-200 text-sm text-amber-800">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    {conflictingFiles.length} file{conflictingFiles.length > 1 ? 's' : ''} already exist here.
+                    Choose what to do for each.
+                  </span>
+                </div>
+              )}
+
+              {/* File list */}
               {files.length > 0 && (
-                <div className="mt-4 space-y-2 max-h-52 overflow-y-auto">
-                  {files.map((f, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{f.file.name}</p>
-                        <p className="text-xs text-gray-400">{formatBytes(f.file.size)}</p>
-                        {f.status === 'uploading' && (
-                          <div className="mt-1.5 h-1 bg-gray-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${f.progress}%` }} />
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {files.map((f, i) => {
+                    const conflict = getConflict(f.file.name);
+                    const res = getRes(f.file.name);
+                    const isSkipped = res === 'skip';
+                    return (
+                      <div
+                        key={i}
+                        className={`flex flex-col gap-1.5 p-3 rounded-xl transition-colors ${
+                          isSkipped ? 'bg-gray-50 opacity-50' : 'bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{f.file.name}</p>
+                            <p className="text-xs text-gray-400">{formatBytes(f.file.size)}</p>
+                            {f.status === 'uploading' && (
+                              <div className="mt-1.5 h-1 bg-gray-200 rounded-full overflow-hidden">
+                                <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${f.progress}%` }} />
+                              </div>
+                            )}
+                            {f.status === 'error' && <p className="text-xs text-red-500 mt-0.5">{f.error}</p>}
+                          </div>
+                          {f.status === 'done' && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />}
+                          {f.status === 'error' && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
+                          {f.status === 'pending' && !conflict && (
+                            <button onClick={() => removeFile(i)} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Conflict resolution row */}
+                        {conflict && f.status === 'pending' && !uploading && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              Already exists
+                            </span>
+                            <ResolutionButtons filename={f.file.name} />
                           </div>
                         )}
-                        {f.status === 'error' && <p className="text-xs text-red-500 mt-0.5">{f.error}</p>}
                       </div>
-                      {f.status === 'done' && <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />}
-                      {f.status === 'error' && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-                      {f.status === 'pending' && (
-                        <button onClick={() => removeFile(i)} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -315,7 +416,7 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
           </button>
           <button
             onClick={handleUpload}
-            disabled={!files.length || uploading || stage === 'done'}
+            disabled={!files.length || uploading || stage === 'done' || (!isFolderMode && activeFiles.length === 0)}
             className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {uploading ? (
@@ -329,7 +430,9 @@ export default function UploadModal({ currentFolder, onClose, onUploaded, initia
               ? stage === 'creating_folders' ? 'Creating folders…' : 'Uploading…'
               : isFolderMode
               ? 'Upload folder'
-              : `Upload ${files.length > 1 ? `${files.length} files` : 'file'}`}
+              : activeFiles.length === 0
+              ? 'All skipped'
+              : `Upload ${activeFiles.length > 1 ? `${activeFiles.length} files` : 'file'}`}
           </button>
         </div>
       </div>

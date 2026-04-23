@@ -51,13 +51,6 @@ export default function Drive({ view: viewProp }) {
   const versionInputRef = useRef(null);
   const [versionTarget, setVersionTarget] = useState(null);
 
-  useEffect(() => {
-    if (folderInputRef.current) {
-      folderInputRef.current.setAttribute('webkitdirectory', '');
-      folderInputRef.current.setAttribute('multiple', '');
-    }
-  }, []);
-
   const currentFolder = folderId || null;
   const view = searchQuery ? 'search' : viewProp;
 
@@ -221,11 +214,23 @@ export default function Drive({ view: viewProp }) {
         e.target.value = '';
         if (files.length) setModal({ type: 'upload', droppedFiles: files });
       }} />
-      <input type="file" ref={folderInputRef} className="hidden" onChange={e => {
-        const files = Array.from(e.target.files || []);
-        e.target.value = '';
-        if (files.length) setModal({ type: 'upload', droppedFiles: files });
-      }} />
+      <input
+        type="file"
+        multiple
+        className="hidden"
+        ref={el => {
+          folderInputRef.current = el;
+          if (el) {
+            el.setAttribute('webkitdirectory', '');
+            el.setAttribute('directory', '');
+          }
+        }}
+        onChange={e => {
+          const files = Array.from(e.target.files || []);
+          e.target.value = '';
+          if (files.length) setModal({ type: 'upload', droppedFiles: files });
+        }}
+      />
       <input type="file" ref={versionInputRef} className="hidden" onChange={handleVersionFileSelect} />
 
       {/* Toolbar */}
@@ -324,7 +329,14 @@ export default function Drive({ view: viewProp }) {
           currentFolder={currentFolder}
           initialFiles={modal.droppedFiles}
           onClose={() => setModal(null)}
-          onUploaded={newItems => setItems(prev => [...prev, ...newItems])}
+          onUploaded={newItems => setItems(prev => {
+            const updated = [...prev];
+            for (const item of newItems) {
+              const idx = updated.findIndex(i => i._id === item._id);
+              if (idx >= 0) updated[idx] = item; else updated.push(item);
+            }
+            return updated;
+          })}
         />
       )}
       {modal?.type === 'createFolder' && (
