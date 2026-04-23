@@ -146,7 +146,7 @@ router.post('/folder', async (req, res) => {
 });
 
 // ── POST /api/files/upload ─────────────────────────────────────────────────
-router.post('/upload', upload.array('files', 20), async (req, res) => {
+router.post('/upload', upload.array('files', 100), async (req, res) => {
   try {
     if (!req.files?.length) return res.status(400).json({ message: 'No files uploaded' });
     const { parent } = req.body;

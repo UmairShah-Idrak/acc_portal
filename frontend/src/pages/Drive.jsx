@@ -47,8 +47,16 @@ export default function Drive({ view: viewProp }) {
   const [contextMenu, setContextMenu] = useState(null); // { x, y, item }
   const [modal, setModal] = useState(null); // { type, item? }
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
   const versionInputRef = useRef(null);
   const [versionTarget, setVersionTarget] = useState(null);
+
+  useEffect(() => {
+    if (folderInputRef.current) {
+      folderInputRef.current.setAttribute('webkitdirectory', '');
+      folderInputRef.current.setAttribute('multiple', '');
+    }
+  }, []);
 
   const currentFolder = folderId || null;
   const view = searchQuery ? 'search' : viewProp;
@@ -213,6 +221,11 @@ export default function Drive({ view: viewProp }) {
         e.target.value = '';
         if (files.length) setModal({ type: 'upload', droppedFiles: files });
       }} />
+      <input type="file" ref={folderInputRef} className="hidden" onChange={e => {
+        const files = Array.from(e.target.files || []);
+        e.target.value = '';
+        if (files.length) setModal({ type: 'upload', droppedFiles: files });
+      }} />
       <input type="file" ref={versionInputRef} className="hidden" onChange={handleVersionFileSelect} />
 
       {/* Toolbar */}
@@ -256,9 +269,13 @@ export default function Drive({ view: viewProp }) {
                 <FolderPlus className="w-4 h-4" />
                 <span className="hidden sm:inline">New Folder</span>
               </button>
+              <button onClick={() => folderInputRef.current?.click()} className="btn-ghost">
+                <Upload className="w-4 h-4" />
+                <span className="hidden sm:inline">Upload Folder</span>
+              </button>
               <button onClick={() => fileInputRef.current?.click()} className="btn-primary">
                 <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">Upload</span>
+                <span className="hidden sm:inline">Upload Files</span>
               </button>
             </>
           )}
