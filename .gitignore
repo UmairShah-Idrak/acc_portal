@@ -3,3 +3,9 @@ dist/
 .env
 *.log
 uploads/
+
+# Server hardening script (contains server-specific instructions)
+harden.sh
+
+# Security audit reports
+*.pdf

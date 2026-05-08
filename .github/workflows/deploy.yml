@@ -1,0 +1,62 @@
+name: Deploy Accounts Portal
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DEPLOY_HOST: 188.245.219.121
+  DEPLOY_PATH: /root/acc_portal
+  DOCKER_COMPOSE_VERSION: "2.24.0"
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to production
+        run: |
+          # Sync codebase (excluding .env, uploads, .git)
+          rsync -avz --delete \
+            --exclude '.env' \
+            --exclude 'uploads/' \
+            --exclude '.git/' \
+            --exclude 'node_modules/' \
+            --exclude 'voip-data-server-hardening.pdf' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ root@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+
+          # Rebuild and restart containers on the server
+          ssh -i ~/.ssh/deploy_key root@${{ env.DEPLOY_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose build --no-cache && \
+             docker compose up -d --force-recreate && \
+             docker compose ps"
+
+      - name: Health check
+        run: |
+          sleep 10
+          STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://voip-data.idrakai.com:8443/api/health)
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✓ Health check passed (HTTP $STATUS)"
+          else
+            echo "✗ Health check failed (HTTP $STATUS)"
+            exit 1
+          fi
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

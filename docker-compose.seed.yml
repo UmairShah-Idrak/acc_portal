@@ -7,10 +7,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: accounts_portal_seed
-    environment:
-      MONGODB_URI: mongodb://admin:BlbkFJW8ok91e4DkRY4BGrcZIN@188.245.219.121:27066/accounts_portal?authSource=admin
-      JWT_SECRET: accounts_portal_secret_key_2024_change_in_prod
-      UPLOAD_DIR: /app/uploads
+    env_file:
+      - .env
     command: ["node", "src/seed.js"]
     networks:
       - portal_net
